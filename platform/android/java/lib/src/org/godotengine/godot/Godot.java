@@ -45,12 +45,14 @@ import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.content.pm.ConfigurationInfo;
@@ -58,19 +60,28 @@ import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.graphics.Point;
 import android.graphics.Rect;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraDevice;
+import android.hardware.camera2.CameraManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbDeviceConnection;
+import android.hardware.usb.UsbManager;
+import android.Manifest;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Messenger;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.Settings.Secure;
+import android.util.Log;
 import android.view.Display;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
@@ -107,6 +118,7 @@ import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
@@ -114,6 +126,10 @@ import java.util.Locale;
 import javax.microedition.khronos.opengles.GL10;
 
 public class Godot extends Fragment implements SensorEventListener, IDownloaderClient {
+
+	static {
+		System.loadLibrary("godot_android");
+	}
 
 	static final int MAX_SINGLETONS = 64;
 	private IStub mDownloaderClientStub;
@@ -1182,4 +1198,98 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 	public void initInputDevices() {
 		mView.initInputDevices();
 	}
+
+	public void getUsbDevices(){
+		// https://github.com/aosp-mirror/platform_frameworks_base/blob/master/core/java/android/hardware/usb/UsbManager.java
+		String TAG = "libusb";
+		int pid = android.os.Process.myPid();
+		int uid = android.os.Process.myUid();
+		Log.i(TAG, "uid: " + uid + " pid:" + pid);
+		UsbManager m = (UsbManager)getApplicationContext().getSystemService(Context.USB_SERVICE);
+		HashMap<String, UsbDevice> usbDevices = m.getDeviceList();
+		Log.i(TAG, "Connected usb devices are: " + usbDevices.size());
+		PendingIntent permissionIntent = PendingIntent.getBroadcast(this, 0, new Intent("com.android.example.USB_PERMISSION"), 0);
+		IntentFilter filter = new IntentFilter("com.android.example.USB_PERMISSION");
+		registerReceiver(usbReceiver, filter);
+
+		if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED){
+			try {
+				// Internal Cam
+				// https://github.com/googlearchive/android-Camera2Basic/blob/master/Application/src/main/java/com/example/android/camera2basic/Camera2BasicFragment.java
+				CameraManager manager = (CameraManager) getApplicationContext().getSystemService(Context.CAMERA_SERVICE);
+				String mCameraId = manager.getCameraIdList()[0];
+				HandlerThread mBackgroundThread = new HandlerThread("CameraBackground");
+				mBackgroundThread.start();
+				Handler mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
+				manager.openCamera(mCameraId, mStateCallback, mBackgroundHandler);
+
+				// External Cam
+				for (final UsbDevice device: usbDevices.values()) {
+					Log.i(TAG, "Request permission for usb device: " + device.getDeviceName());
+					//enforceCallingPermission(Manifest.permission.CAMERA, "tried enforcing camera permission");
+					m.requestPermission(device, permissionIntent);
+				}
+			} catch (CameraAccessException e) {
+					e.printStackTrace();
+			}
+		} else {
+			Log.i(TAG, "no camera permission");
+			requestPermissions();
+		}
+	}
+
+	private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
+		String TAG = "libusb";
+		public void onReceive(Context context, Intent intent) {
+			String action = intent.getAction();
+			if ("com.android.example.USB_PERMISSION".equals(action)) {
+				synchronized (this) {
+					UsbDevice device = (UsbDevice)intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+					if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+						if(device != null){
+							final String name = device.getDeviceName();
+							Log.i(TAG, "Connect to usb device: " + name);
+							UsbManager m = (UsbManager)getApplicationContext().getSystemService(Context.USB_SERVICE);
+							UsbDeviceConnection mConnection = m.openDevice(device);
+							final String[] v = (name != "") ? name.split("/") : null;
+							int busnum = 0;
+							int devnum = 0;
+							if (v != null) {
+								busnum = Integer.parseInt(v[v.length-2]);
+								devnum = Integer.parseInt(v[v.length-1]);
+							}
+							if (mConnection != null) {
+								final int fd = mConnection.getFileDescriptor();
+								final byte[] rawDesc = mConnection.getRawDescriptors();
+								Log.i(TAG, String.format(Locale.US, "name=%s,desc=%d,busnum=%d,devnum=%d,rawDesc=", name, fd, busnum, devnum) + rawDesc);
+								openDevice(fd, busnum, devnum);
+							} else {
+								Log.e(TAG, "could not connect to device " + name);
+							}
+						}
+					} else {
+						Log.i(TAG, "permission denied for device " + device.getDeviceName());
+						alert(TAG, "permission denied for device " + device.getDeviceName());
+					}
+				}
+			}
+		}
+	};
+
+	private final CameraDevice.StateCallback mStateCallback = new CameraDevice.StateCallback() {
+		@Override
+		public void onOpened(@NonNull CameraDevice cameraDevice) {
+		}
+
+		@Override
+		public void onDisconnected(@NonNull CameraDevice cameraDevice) {
+		}
+
+		@Override
+		public void onError(@NonNull CameraDevice cameraDevice, int error) {
+		}
+	};
+
+	public static native void openDevice(int fd, int busnum, int devnum);
+
 }

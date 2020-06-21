@@ -29,6 +29,9 @@
 /*************************************************************************/
 
 #include "java_godot_wrapper.h"
+#include <unistd.h>
+#include <sys/syscall.h>
+#include <type_traits>
 
 // JNIEnv is only valid within the thread it belongs to, in a multi threading environment
 // we can't cache it.
@@ -78,6 +81,7 @@ GodotJavaWrapper::GodotJavaWrapper(JNIEnv *p_env, jobject p_activity, jobject p_
 
 	// get some Activity method pointers...
 	_get_class_loader = p_env->GetMethodID(activity_class, "getClassLoader", "()Ljava/lang/ClassLoader;");
+	_get_usb_devices = p_env->GetMethodID(godot_class, "getUsbDevices", "()V");
 }
 
 GodotJavaWrapper::~GodotJavaWrapper() {
@@ -278,4 +282,39 @@ void GodotJavaWrapper::vibrate(int p_duration_ms) {
 		JNIEnv *env = ThreadAndroid::get_env();
 		env->CallVoidMethod(godot_instance, _vibrate, p_duration_ms);
 	}
+}
+
+namespace{
+	int threadId()
+	{
+	    // this is OS specific
+	    static_assert(std::is_same<int, pid_t>::value, "no do");
+	    return int(syscall(SYS_gettid));
+	}
+}
+#define STRINGIFY(x) STRINGIFY_PRIVATE(x)
+#define STRINGIFY_PRIVATE(x) #x
+#define LOG_TAG    __FILE__ ":" STRINGIFY(__LINE__)
+#define LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
+#define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
+
+void GodotJavaWrapper::get_usb_devices() {
+	if (_get_usb_devices) {
+		JNIEnv *env = ThreadAndroid::get_env();
+		env->CallVoidMethod(godot_instance, _get_usb_devices);
+		LOGI("libusb tid:%i)\n", threadId());
+	}
+}
+
+int uvccamera_libusb_fd = 0;
+int uvccamera_libusb_busnum = 0;
+int uvccamera_libusb_devnum = 0;
+
+extern "C"
+JNIEXPORT void JNICALL Java_org_godotengine_godot_Godot_openDevice(JNIEnv *env, jclass clazz, jint fd, jint busnum, jint devnum) {
+	LOGI("libusb callback fd:%i busnum:%i devnum:%i tid:%i)\n", fd, busnum, devnum, threadId());
+	uvccamera_libusb_fd = fd;
+	uvccamera_libusb_busnum = busnum;
+	uvccamera_libusb_devnum = devnum;
+
 }

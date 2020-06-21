@@ -204,10 +204,10 @@ void CameraFeed::set_YCbCr_img(Ref<Image> p_ycbcr_img) {
 			base_width = new_width;
 			base_height = new_height;
 
-			vs->texture_allocate(texture[CameraServer::FEED_RGBA_IMAGE], new_width, new_height, 0, Image::FORMAT_RGB8, VS::TEXTURE_TYPE_2D, VS::TEXTURE_FLAGS_DEFAULT);
+			vs->texture_allocate(texture[CameraServer::FEED_YCBCR_IMAGE], new_width, new_height, 0, Image::FORMAT_RG8, VS::TEXTURE_TYPE_2D, VS::TEXTURE_FLAGS_DEFAULT);
 		}
 
-		vs->texture_set_data(texture[CameraServer::FEED_RGBA_IMAGE], p_ycbcr_img);
+		vs->texture_set_data(texture[CameraServer::FEED_YCBCR_IMAGE], p_ycbcr_img);
 		datatype = CameraFeed::FEED_YCBCR;
 	}
 }

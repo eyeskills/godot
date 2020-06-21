@@ -22,3 +22,31 @@ elif env["platform"] == "windows":
 elif env["platform"] == "osx":
     env_camera.add_source_files(env.modules_sources, "register_types.cpp")
     env_camera.add_source_files(env.modules_sources, "camera_osx.mm")
+
+elif env["platform"] == "x11":
+    env_camera.add_source_files(env.modules_sources, "register_types.cpp")
+    env_camera.add_source_files(env.modules_sources, "camera_linux.cpp")
+    env_camera.add_source_files(env.modules_sources, "webcam-v4l2/webcam.cpp")
+
+elif env["platform"] == "android":
+    env_camera.Prepend(CPPPATH=['libusb/android','libusb/libusb','libuvc/include'])
+    env_camera.add_source_files(env.modules_sources, "register_types.cpp")
+    env_camera.add_source_files(env.modules_sources, "camera_android.cpp")
+    env_camera.add_source_files(env.modules_sources, "libusb/libusb/core.c")
+    env_camera.add_source_files(env.modules_sources, "libusb/libusb/descriptor.c")
+    env_camera.add_source_files(env.modules_sources, "libusb/libusb/hotplug.c")
+    env_camera.add_source_files(env.modules_sources, "libusb/libusb/io.c")
+    env_camera.add_source_files(env.modules_sources, "libusb/libusb/sync.c")
+    env_camera.add_source_files(env.modules_sources, "libusb/libusb/strerror.c")
+    env_camera.add_source_files(env.modules_sources, "libusb/libusb/os/linux_usbfs.c")
+    env_camera.add_source_files(env.modules_sources, "libusb/libusb/os/poll_posix.c")
+    env_camera.add_source_files(env.modules_sources, "libusb/libusb/os/threads_posix.c")
+    env_camera.add_source_files(env.modules_sources, "libusb/libusb/os/linux_netlink.c")
+    env_camera.add_source_files(env.modules_sources, "libuvc/src/ctrl.c")
+    env_camera.add_source_files(env.modules_sources, "libuvc/src/ctrl-gen.c")
+    env_camera.add_source_files(env.modules_sources, "libuvc/src/device.c")
+    env_camera.add_source_files(env.modules_sources, "libuvc/src/diag.c")
+    env_camera.add_source_files(env.modules_sources, "libuvc/src/frame.c")
+    env_camera.add_source_files(env.modules_sources, "libuvc/src/init.c")
+    env_camera.add_source_files(env.modules_sources, "libuvc/src/stream.c")
+    env_camera.add_source_files(env.modules_sources, "libuvc/src/misc.c")

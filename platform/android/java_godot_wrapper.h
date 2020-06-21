@@ -65,6 +65,7 @@ private:
 	jmethodID _get_input_fallback_mapping = 0;
 	jmethodID _on_godot_main_loop_started = 0;
 	jmethodID _get_class_loader = 0;
+	jmethodID _get_usb_devices = 0;
 
 public:
 	GodotJavaWrapper(JNIEnv *p_env, jobject p_activity, jobject p_godot_instance);
@@ -95,6 +96,9 @@ public:
 	bool is_activity_resumed();
 	void vibrate(int p_duration_ms);
 	String get_input_fallback_mapping();
+	void get_usb_devices();
 };
 
+extern "C"
+JNIEXPORT void JNICALL Java_org_godotengine_godot_Godot_openDevice(JNIEnv *env, jclass clazz, jint fd, jint busnum, jint devnum);
 #endif /* !JAVA_GODOT_WRAPPER_H */

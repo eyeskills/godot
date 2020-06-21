@@ -351,6 +351,7 @@ Transform MobileVRInterface::get_transform_for_eye(ARVRInterface::Eyes p_eye, co
 	_THREAD_SAFE_METHOD_
 
 	Transform transform_for_eye;
+	//printf("%6.4lf",p_cam_transform.basis.get_scale().x);
 
 	ARVRServer *arvr_server = ARVRServer::get_singleton();
 	ERR_FAIL_NULL_V(arvr_server, transform_for_eye);
@@ -450,7 +451,7 @@ MobileVRInterface::MobileVRInterface() {
 	initialized = false;
 
 	// Just set some defaults for these. At some point we need to look at adding a lookup table for common device + headset combos and/or support reading cardboard QR codes
-	eye_height = 1.85;
+	eye_height = 0;
 	intraocular_dist = 6.0;
 	display_width = 14.5;
 	display_to_lens = 4.0;

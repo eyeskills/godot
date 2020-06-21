@@ -1,5 +1,5 @@
 /*************************************************************************/
-/*  register_types.cpp                                                   */
+/*  camera_android.h                                                         */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
@@ -28,35 +28,50 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#include "register_types.h"
+#ifndef CAMERAANDROID_H
+#define CAMERAANDROID_H
 
-#if defined(WINDOWS_ENABLED)
-#include "camera_win.h"
-#endif
-#if defined(IPHONE_ENABLED)
-#include "camera_ios.h"
-#endif
-#if defined(OSX_ENABLED)
-#include "camera_osx.h"
-#endif
-#if defined(UNIX_ENABLED)
-#include "camera_android.h"
-#endif
+#include "servers/camera/camera_feed.h"
+#include "servers/camera_server.h"
 
-void register_camera_types() {
-#if defined(WINDOWS_ENABLED)
-	CameraServer::make_default<CameraWindows>();
-#endif
-#if defined(IPHONE_ENABLED)
-	CameraServer::make_default<CameraIOS>();
-#endif
-#if defined(OSX_ENABLED)
-	CameraServer::make_default<CameraOSX>();
-#endif
-#if defined(UNIX_ENABLED)
-	CameraServer::make_default<CameraAndroid>();
-#endif
-}
+#include <pthread.h>
 
-void unregister_camera_types() {
-}
+struct libusb_context;
+struct libusb_device_handle;
+struct uvc_context;
+struct uvc_device;
+struct uvc_device_handle;
+struct uvc_stream_ctrl;
+struct uvc_frame;
+
+class CameraFeedAndroid : public CameraFeed {
+public:
+  CameraFeedAndroid();
+  virtual ~CameraFeedAndroid();
+
+  bool activate_feed();
+  void activate_feed_thread();
+  void deactivate_feed();
+  void set_device(void*);
+  void frameCallback(uvc_frame *frame);
+private:
+  libusb_context* usb_ctx;
+  libusb_device_handle* usb_devh;
+  uvc_context* uvc_ctx;
+  uvc_device* uvc_dev;
+  uvc_device_handle* uvc_devh;
+  uvc_stream_ctrl* uvc_stream_ctrl_;
+  pthread_t uvc_thread;
+};
+
+
+class CameraAndroid : public CameraServer {
+public:
+  CameraAndroid();
+  ~CameraAndroid()=default;
+private:
+  void add_active_cameras();
+  void update_feeds();
+};
+
+#endif /* CAMERAANDROID_H */

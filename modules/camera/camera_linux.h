@@ -1,5 +1,5 @@
 /*************************************************************************/
-/*  register_types.cpp                                                   */
+/*  camera_linux.h                                                         */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
@@ -28,35 +28,34 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-#include "register_types.h"
+#ifndef CAMERALINUX_H
+#define CAMERALINUX_H
 
-#if defined(WINDOWS_ENABLED)
-#include "camera_win.h"
-#endif
-#if defined(IPHONE_ENABLED)
-#include "camera_ios.h"
-#endif
-#if defined(OSX_ENABLED)
-#include "camera_osx.h"
-#endif
-#if defined(UNIX_ENABLED)
-#include "camera_android.h"
-#endif
+#include "servers/camera/camera_feed.h"
+#include "servers/camera_server.h"
+#include "webcam-v4l2/webcam.h"
 
-void register_camera_types() {
-#if defined(WINDOWS_ENABLED)
-	CameraServer::make_default<CameraWindows>();
-#endif
-#if defined(IPHONE_ENABLED)
-	CameraServer::make_default<CameraIOS>();
-#endif
-#if defined(OSX_ENABLED)
-	CameraServer::make_default<CameraOSX>();
-#endif
-#if defined(UNIX_ENABLED)
-	CameraServer::make_default<CameraAndroid>();
-#endif
-}
+class CameraFeedLinux : public CameraFeed {
+public:
+  using WebcamPtr = std::unique_ptr<Webcam>;
+  CameraFeedLinux();
+  virtual ~CameraFeedLinux();
 
-void unregister_camera_types() {
-}
+  bool activate_feed();
+  void deactivate_feed();
+  void set_device(WebcamPtr);
+private:
+  WebcamPtr device;
+};
+
+
+class CameraLinux : public CameraServer {
+public:
+  CameraLinux();
+  ~CameraLinux();
+private:
+  void add_active_cameras();
+  void update_feeds();
+};
+
+#endif /* CAMERALINUX_H */

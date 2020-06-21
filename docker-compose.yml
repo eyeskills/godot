@@ -1,0 +1,20 @@
+# make sure your local.properties point the mounted paths e.g.
+# sdk.dir=/android
+# ndk.dir=/android/android-ndk-r14b
+# then run it
+# > docker-compose run --rm godot
+version: '3'
+services:
+  godot:
+    image: gradle
+    command:
+     - sh
+     - -c
+     - "gradle generateGodotTemplates"
+    environment:
+     - ANDROID_SDK_ROOT=/android
+    volumes:
+     - ${PWD}:/home/gradle/project
+     - ${PWD}/.gradle:/home/gradle/.gradle
+     - /home/ai/android:/android
+    working_dir: /home/gradle/project/platform/android/java
