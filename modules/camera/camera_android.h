@@ -46,32 +46,31 @@ struct uvc_frame;
 
 class CameraFeedAndroid : public CameraFeed {
 public:
-  CameraFeedAndroid();
-  virtual ~CameraFeedAndroid();
+	CameraFeedAndroid();
 
-  bool activate_feed();
-  void activate_feed_thread();
-  void deactivate_feed();
-  void set_device(void*);
-  void frameCallback(uvc_frame *frame);
+	bool activate_feed();
+	void deactivate_feed();
+
+	static Ref<CameraFeedAndroid> create(int fd, String name);
+	static Ref<CameraFeedAndroid> destroy(int fd);
+
+	// TODO make this private
+	void frame_callback(uvc_frame *frame);
+
 private:
-  libusb_context* usb_ctx;
-  libusb_device_handle* usb_devh;
-  uvc_context* uvc_ctx;
-  uvc_device* uvc_dev;
-  uvc_device_handle* uvc_devh;
-  uvc_stream_ctrl* uvc_stream_ctrl_;
-  pthread_t uvc_thread;
+	int fd;
+	uvc_device_handle* uvc_devh;
+	uvc_stream_ctrl* stream_ctrl;
 };
-
 
 class CameraAndroid : public CameraServer {
 public:
-  CameraAndroid();
-  ~CameraAndroid()=default;
+	CameraAndroid();
+	~CameraAndroid();
+
 private:
-  void add_active_cameras();
-  void update_feeds();
+	void add_active_cameras();
+	void update_feeds();
 };
 
 #endif /* CAMERAANDROID_H */

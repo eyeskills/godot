@@ -160,6 +160,11 @@ public class GodotLib {
 	public static native void joyconnectionchanged(int p_device, boolean p_connected, String p_name);
 
 	/**
+	 * Fires when a USB camera is added or removed.
+	 */
+	public static native void cameraconnectionchanged(int p_device, boolean p_connected, String p_name);
+
+	/**
 	 * Invoked when the Android app resumes.
 	 * @see androidx.fragment.app.Fragment#onResume()
 	 */

@@ -45,6 +45,7 @@
 #include "jni_utils.h"
 #include "main/input_default.h"
 #include "main/main.h"
+#include "modules/camera/camera_android.h"
 #include "net_socket_android.h"
 #include "os_android.h"
 #include "string_android.h"
@@ -372,6 +373,22 @@ JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_joyconnectionchanged(
 	if (os_android) {
 		String name = jstring_to_string(p_name, env);
 		os_android->joy_connection_changed(p_device, p_connected, name);
+	}
+}
+
+JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_cameraconnectionchanged(JNIEnv *env, jclass clazz, jint p_device, jboolean p_connected, jstring p_name) {
+	if (os_android) {
+		String name = jstring_to_string(p_name, env);
+		CameraServer* server = CameraServer::get_singleton();
+		if (p_connected) {
+			Ref<CameraFeed> feed = CameraFeedAndroid::create(p_device, name);
+			if (feed.is_valid())
+				server->add_feed(feed);
+		} else {
+			Ref<CameraFeed> feed = CameraFeedAndroid::destroy(p_device);
+			if (feed.is_valid())
+				server->remove_feed(feed);
+		}
 	}
 }
 

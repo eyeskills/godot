@@ -305,16 +305,3 @@ void GodotJavaWrapper::get_usb_devices() {
 		LOGI("libusb tid:%i)\n", threadId());
 	}
 }
-
-int uvccamera_libusb_fd = 0;
-int uvccamera_libusb_busnum = 0;
-int uvccamera_libusb_devnum = 0;
-
-extern "C"
-JNIEXPORT void JNICALL Java_org_godotengine_godot_Godot_openDevice(JNIEnv *env, jclass clazz, jint fd, jint busnum, jint devnum) {
-	LOGI("libusb callback fd:%i busnum:%i devnum:%i tid:%i)\n", fd, busnum, devnum, threadId());
-	uvccamera_libusb_fd = fd;
-	uvccamera_libusb_busnum = busnum;
-	uvccamera_libusb_devnum = devnum;
-
-}

@@ -67,6 +67,7 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
@@ -273,6 +274,9 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 	private Sensor mGravity;
 	private Sensor mMagnetometer;
 	private Sensor mGyroscope;
+
+	private UsbManager mUsbManager;
+	private HashMap<Integer, UsbDeviceConnection> mUsbDevices;
 
 	public static GodotIO io;
 	public static GodotNetUtils netUtils;
@@ -575,6 +579,13 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 		mSensorManager.registerListener(this, mMagnetometer, SensorManager.SENSOR_DELAY_GAME);
 		mGyroscope = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
 		mSensorManager.registerListener(this, mGyroscope, SensorManager.SENSOR_DELAY_GAME);
+
+		mUsbDevices = new HashMap<Integer, UsbDeviceConnection>();
+		mUsbManager = (UsbManager)getSystemService(Context.USB_SERVICE);
+		IntentFilter filter = new IntentFilter("com.android.example.USB_PERMISSION");
+		filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+		filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+		registerReceiver(usbReceiver, filter);
 
 		GodotLib.initialize(activity, this, activity.getAssets(), use_apk_expansion);
 
@@ -1205,12 +1216,6 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 		int pid = android.os.Process.myPid();
 		int uid = android.os.Process.myUid();
 		Log.i(TAG, "uid: " + uid + " pid:" + pid);
-		UsbManager m = (UsbManager)getApplicationContext().getSystemService(Context.USB_SERVICE);
-		HashMap<String, UsbDevice> usbDevices = m.getDeviceList();
-		Log.i(TAG, "Connected usb devices are: " + usbDevices.size());
-		PendingIntent permissionIntent = PendingIntent.getBroadcast(this, 0, new Intent("com.android.example.USB_PERMISSION"), 0);
-		IntentFilter filter = new IntentFilter("com.android.example.USB_PERMISSION");
-		registerReceiver(usbReceiver, filter);
 
 		if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED){
 			try {
@@ -1224,10 +1229,14 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 				manager.openCamera(mCameraId, mStateCallback, mBackgroundHandler);
 
 				// External Cam
+				HashMap<String, UsbDevice> usbDevices = mUsbManager.getDeviceList();
+				Log.i(TAG, "Connected usb devices are: " + usbDevices.size());
 				for (final UsbDevice device: usbDevices.values()) {
-					Log.i(TAG, "Request permission for usb device: " + device.getDeviceName());
+					//Log.i(TAG, "Request permission for usb device: " + device.getDeviceName());
 					//enforceCallingPermission(Manifest.permission.CAMERA, "tried enforcing camera permission");
-					m.requestPermission(device, permissionIntent);
+					//PendingIntent permissionIntent = PendingIntent.getBroadcast(
+					//		this, 0, new Intent("com.android.example.USB_PERMISSION"), 0);
+					//mUsbManager.requestPermission(device, permissionIntent);
 				}
 			} catch (CameraAccessException e) {
 					e.printStackTrace();
@@ -1238,38 +1247,69 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 		}
 	}
 
+	// https://stackoverflow.com/questions/15957509/compile-and-link-against-libusb-for-android
+	// https://stackoverflow.com/questions/22197425/low-level-usb-api-on-android
 	private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
 		String TAG = "libusb";
 		public void onReceive(Context context, Intent intent) {
 			String action = intent.getAction();
-			if ("com.android.example.USB_PERMISSION".equals(action)) {
+			Log.i(TAG, "BroadcastReceiver onReceive, action=" + action);
+
+			if (action.equals(UsbManager.ACTION_USB_DEVICE_ATTACHED)) {
 				synchronized (this) {
-					UsbDevice device = (UsbDevice)intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-					if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-						if(device != null){
-							final String name = device.getDeviceName();
-							Log.i(TAG, "Connect to usb device: " + name);
-							UsbManager m = (UsbManager)getApplicationContext().getSystemService(Context.USB_SERVICE);
-							UsbDeviceConnection mConnection = m.openDevice(device);
-							final String[] v = (name != "") ? name.split("/") : null;
-							int busnum = 0;
-							int devnum = 0;
-							if (v != null) {
-								busnum = Integer.parseInt(v[v.length-2]);
-								devnum = Integer.parseInt(v[v.length-1]);
-							}
-							if (mConnection != null) {
-								final int fd = mConnection.getFileDescriptor();
-								final byte[] rawDesc = mConnection.getRawDescriptors();
-								Log.i(TAG, String.format(Locale.US, "name=%s,desc=%d,busnum=%d,devnum=%d,rawDesc=", name, fd, busnum, devnum) + rawDesc);
-								openDevice(fd, busnum, devnum);
+					UsbDevice device =
+						(UsbDevice)intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+					if (device != null) {
+						String name = device.getDeviceName();
+						if (mUsbManager.hasPermission(device)) {
+							Log.i(TAG, "Already have permission for usb device " + name);
+						} else {
+							Log.i(TAG, "Requesting permission for usb device: " + name);
+							PendingIntent permissionIntent =
+								PendingIntent.getBroadcast(Godot.this, 0, new Intent("com.android.example.USB_PERMISSION"), 0);
+							mUsbManager.requestPermission(device, permissionIntent);
+						}
+					}
+				}
+
+			} else if (action.equals(UsbManager.ACTION_USB_DEVICE_DETACHED)) {
+				synchronized (this) {
+					UsbDevice device =
+						(UsbDevice)intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+					if (device != null) {
+						String name = device.getDeviceName();
+						Log.i(TAG, "Detached usb device " + name + "(id=" + Integer.toString(device.getDeviceId()) + ")");
+						UsbDeviceConnection connection = mUsbDevices.get(device.getDeviceId());
+						if (connection != null) {
+							int fd = connection.getFileDescriptor();
+							mUsbDevices.remove(device.getDeviceId());
+							GodotLib.cameraconnectionchanged(fd, false, name);
+						}
+					}
+				}
+
+			} else if (action.equals("com.android.example.USB_PERMISSION")) {
+				synchronized (this) {
+					UsbDevice device =
+						(UsbDevice)intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+					if (device != null) {
+						String name = device.getDeviceName();
+						if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+							Log.i(TAG, "Connecting to usb device " + name + "(id=" + Integer.toString(device.getDeviceId()) + ")");
+							UsbDeviceConnection connection = mUsbManager.openDevice(device);
+							if (connection != null) {
+								mUsbDevices.put(device.getDeviceId(), connection);
+								final int fd = connection.getFileDescriptor();
+								final byte[] rawDesc = connection.getRawDescriptors();
+								Log.i(TAG, String.format(Locale.US, "name=%s,desc=%d,rawDesc=", name, fd) + rawDesc);
+								GodotLib.cameraconnectionchanged(fd, true, name);
 							} else {
 								Log.e(TAG, "could not connect to device " + name);
 							}
+						} else {
+							Log.i(TAG, "permission denied for device " + name);
+							alert(TAG, "permission denied for device " + name);
 						}
-					} else {
-						Log.i(TAG, "permission denied for device " + device.getDeviceName());
-						alert(TAG, "permission denied for device " + device.getDeviceName());
 					}
 				}
 			}
@@ -1289,7 +1329,4 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 		public void onError(@NonNull CameraDevice cameraDevice, int error) {
 		}
 	};
-
-	public static native void openDevice(int fd, int busnum, int devnum);
-
 }

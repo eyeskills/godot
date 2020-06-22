@@ -52,116 +52,123 @@
 #include "libuvc/libuvc_internal.h"
 
 const char* libuvc_error_name(int e){return uvc_strerror((uvc_error_t)e);}
-extern int uvccamera_libusb_fd;
-extern int uvccamera_libusb_busnum;
-extern int uvccamera_libusb_devnum;
 
 namespace {
-  extern "C" void uvc_callback(struct uvc_frame* frame, void* userptr) {
-    reinterpret_cast<CameraFeedAndroid*>(userptr)->frameCallback(frame);
-  }
+	extern "C" void uvc_callback(struct uvc_frame* frame, void* userptr) {
+		LOGI("uvc_callback(frame=%p, userptr=%p)\n", frame, userptr);
+		reinterpret_cast<CameraFeedAndroid*>(userptr)->frame_callback(frame);
+	}
 }
 
-CameraFeedAndroid::CameraFeedAndroid():uvc_dev(NULL),uvc_stream_ctrl_(NULL){
-  ///@TODO implement this, should store information about our available camera
-  // simple MJPG version: https://gist.github.com/mike168m/6dd4eb42b2ec906e064d
-  int status;
-  LOGI("libusb get_godot_java()\n");
-  GodotJavaWrapper *godot_java = ((OS_Android *)OS::get_singleton())->get_godot_java();
-  LOGI("libusb get_usb_devices()\n");
-  godot_java->get_usb_devices();
+static libusb_context* usb_ctx{nullptr};
+static uvc_context* uvc_ctx{nullptr};
 
-  while(!uvccamera_libusb_fd) {
-	  LOGI("waiting for uvc callback\n");
-	  sleep(1); // wait for callback to happen
-  }
-  
-  // libusb init
-  int fd = uvccamera_libusb_fd; //java.getFd();
-  LOGI("libusb_init(): fd:%i\n", fd);
-  status = libusb_init(&usb_ctx);
-  LOGI("libusb_init(): %s (%i)\n", libusb_error_name(status), status);
-  //status = libusb_set_option(NULL, LIBUSB_OPTION_LOG_LEVEL, verbose);
-  status = libusb_wrap_sys_device(usb_ctx, (intptr_t)fd, &usb_devh);
-  LOGI("libusb_wrap_sys_device(): %s (%i)\n", libusb_error_name(status), status);
+// Map file descriptors to associated feeds.
+static Map<int, Ref<CameraFeedAndroid>> uvc_devices{};
 
-  // libuvc init
-  status = uvc_init(&uvc_ctx, usb_ctx);
-  LOGI("uvc_init: %s (%i) ", libuvc_error_name(status), status);
+// simple MJPG version: https://gist.github.com/mike168m/6dd4eb42b2ec906e064d
 
-  uvc_dev = (uvc_device*) malloc(sizeof(uvc_device));
-  uvc_dev->ctx = uvc_ctx;
-  uvc_dev->ref = 1;
-  uvc_dev->usb_dev = libusb_get_device(usb_devh);
-  LOGI("uvc device: %p\n", (void*)uvc_dev->usb_dev);
+CameraFeedAndroid::CameraFeedAndroid()
+		: fd{-1}, uvc_devh{nullptr}, stream_ctrl{nullptr} { }
 
-  status = uvc_open_with_usb_devh(uvc_dev, &uvc_devh, usb_devh);
-  LOGI("uvc_open: %s (%i) ", libuvc_error_name(status), status);
-  uvc_print_diag(uvc_devh, NULL);
-  /* Try to negotiate a 160x120 14 fps YUYV stream profile */
-  uvc_stream_ctrl_ = (struct uvc_stream_ctrl*) malloc(sizeof(struct uvc_stream_ctrl));
-  status = uvc_get_stream_ctrl_format_size(
-      uvc_devh, uvc_stream_ctrl_, /* result stored in ctrl */
-      UVC_FRAME_FORMAT_YUYV, /* YUV 422, aka YUV 4:2:2. try _COMPRESSED */
-      160, 120, 14 /* width, height, fps */
-  );
-  LOGI("uvc_get_stream_ctrl_format_size: %s (%i) ", libuvc_error_name(status), status);
-  uvc_print_stream_ctrl(uvc_stream_ctrl_, NULL);
+Ref<CameraFeedAndroid> CameraFeedAndroid::create(int fd, String name)
+{
+	print_line("CameraFeedAndroid::create_feed(fd=" + itos(fd) +")");
+
+	if (uvc_devices.has(fd))
+		destroy(fd); // should have been destroyed already, do it now
+
+	Ref<CameraFeedAndroid> feed;
+
+	libusb_device_handle* usb_devh;
+	int status = libusb_wrap_sys_device(usb_ctx, (intptr_t)fd, &usb_devh);
+	LOGI("libusb_wrap_sys_device(): %s (%i)\n", libusb_error_name(status), status);
+	if (status != 0)
+		return feed;
+
+	// libuvc init
+	uvc_device* uvc_dev;
+	uvc_dev = (uvc_device*)malloc(sizeof(uvc_device)); // XXX THIS LEAKS!!??
+	uvc_dev->ctx = uvc_ctx;
+	uvc_dev->ref = 0;
+	uvc_dev->usb_dev = libusb_get_device(usb_devh);
+	LOGI("uvc device: %p\n", (void*)uvc_dev->usb_dev);
+
+	uvc_device_handle* uvc_devh;
+	status = uvc_open_with_usb_devh(uvc_dev, &uvc_devh, usb_devh);
+	LOGI("uvc_open: %s (%i) ", libuvc_error_name(status), status);
+	if (status != 0)
+		return feed;
+
+	uvc_print_diag(uvc_devh, NULL);
+
+	/* Try to negotiate a 160x120 14 fps YUYV stream profile */
+	struct uvc_stream_ctrl* stream_ctrl =
+		(struct uvc_stream_ctrl*)malloc(sizeof(struct uvc_stream_ctrl));
+	status = uvc_get_stream_ctrl_format_size(
+		uvc_devh, stream_ctrl, /* result stored in ctrl */
+		UVC_FRAME_FORMAT_ANY, /* YUV 422, aka YUV 4:2:2. try _COMPRESSED */
+		160, 120, 15); /* width, height, fps */
+	LOGI("uvc_get_stream_ctrl_format_size: %s (%i) ", libuvc_error_name(status), status);
+	if (status != 0) {
+		uvc_close(uvc_devh);
+		return feed;
+	}
+	uvc_print_stream_ctrl(stream_ctrl, NULL);
+
+	print_line(feed.is_valid() ? "XYZZY valid" : "XYZZY invalid");
+	feed.instance();
+	feed->set_name(name);
+	feed->fd = fd;
+	feed->uvc_devh = uvc_devh;
+	feed->stream_ctrl = stream_ctrl;
+
+	uvc_devices.insert(fd, feed);
+	return feed;
 }
 
-CameraFeedAndroid::~CameraFeedAndroid() {
-  // make sure we stop recording if we are!
-  if (is_active()) {
-    deactivate_feed();
-  };
+// Can’t do this in ~CameraFeedAndroid because it might get called
+// much later, when the last Ref goes out of scope.
+Ref<CameraFeedAndroid> CameraFeedAndroid::destroy(int fd) {
+	auto p_feed = uvc_devices.find(fd);
+	if (!p_feed)
+		return {};
+	Ref<CameraFeedAndroid> feed{p_feed->value()};
+	uvc_devices.erase(fd);
 
-  ///@TODO free up anything used by this
-  free(uvc_dev);
-  free(uvc_stream_ctrl_);
+	print_line("Destroying CameraFeedAndroid at " + itos((long long)&feed));
+	// Make sure we stop recording if we are.
+	if (feed->is_active())
+		feed->deactivate_feed();
+	free(feed->stream_ctrl);
+	uvc_close(feed->uvc_devh);
+	feed->fd = -1;
+	return feed;
 }
 
-namespace {
-  extern "C" void* activate_feed_callback(void* userptr) {
-    reinterpret_cast<CameraFeedAndroid*>(userptr)->activate_feed_thread();
-    return NULL;
-  }
-}
 bool CameraFeedAndroid::activate_feed() {
-  ///@TODO this should activate our camera and start the process of capturing frames
-  int status = pthread_create(&uvc_thread,NULL,activate_feed_callback,this);
-  LOGI("uvc activate feed: %s (%i) ", strerror(status), status);
-  //pthread_detach(uvc_thread);
-  return status?false:true;
-}
-
-void CameraFeedAndroid::activate_feed_thread() {
-  LOGI("uvc_start_streaming");
-  int status = uvc_start_streaming(uvc_devh, uvc_stream_ctrl_, uvc_callback, this, 0);
-  LOGI("uvc_start_streaming: %s (%i)", libuvc_error_name(status), status);
-  sleep(10);
-  uvc_stop_streaming(uvc_devh);
-  LOGI("uvc_stop_streaming");
+	if (fd < 0)
+		return false;
+	LOGI("CameraFeedAndroid::activate_feed(this=%p)\n", this);
+	int status = uvc_start_streaming(uvc_devh, stream_ctrl, uvc_callback, this, 0);
+	LOGI("uvc_start_streaming: %s (%i)", libuvc_error_name(status), status);
+	return status == 0;
 }
 
 ///@TODO we should probably have a callback method here that is being called by the
 // camera API which provides frames and call back into the CameraServer to update our texture
 
 void CameraFeedAndroid::deactivate_feed(){
-  ///@TODO this should deactivate our camera and stop the process of capturing frames
-  /* End the stream. Blocks until last callback is serviced */
-}
-
-void CameraFeedAndroid::set_device(void* p_device) {
-  assert(p_device);
-  //device.swap(p_device); // ! can't copy unique_ptr
-  // get some info
-  //set_name((char*)device->get_name());
+	if (fd < 0)
+		return;
+	/* End the stream. Blocks until last callback is serviced */
+	uvc_stop_streaming(uvc_devh);
 }
 
 /* This callback function runs once per frame. Use it to perform any
  * quick processing you need, or have it put the frame into your application's
  * input queue. If this function takes too long, you'll start losing frames. */
-void CameraFeedAndroid::frameCallback(uvc_frame_t *frame) {
+void CameraFeedAndroid::frame_callback(uvc_frame_t *frame) {
   LOGI("uvc_camera_feed_callback triggered");
   uvc_frame_t *bgr;
   uvc_error_t ret;
@@ -192,24 +199,34 @@ void CameraFeedAndroid::frameCallback(uvc_frame_t *frame) {
   uvc_free_frame(bgr);
 }
 
-
 CameraAndroid::CameraAndroid() {
-  // Find cameras active right now
-  update_feeds();
-  add_active_cameras();
+	// Initialize libusb and libuvc if we haven’t yet.
+	if (!usb_ctx) {
+		int status = libusb_init(&usb_ctx);
+		if (status != 0)
+			LOGI("libusb_init: %s (%i)\n", libusb_error_name(status), status);
+		status = uvc_init(&uvc_ctx, usb_ctx);
+		if (status != 0)
+			LOGI("uvc_init: %s (%i) ", libuvc_error_name(status), status);
+	}
+	//libusb_set_option(NULL, LIBUSB_OPTION_LOG_LEVEL, verbose);
 
-  // need to add something that will react to devices being connected/removed...
+	// Find cameras active right now
+	//add_active_cameras();
+	//update_feeds();
+};
+
+CameraAndroid::~CameraAndroid() {
+	uvc_exit(uvc_ctx);
+	libusb_exit(usb_ctx);
+	uvc_ctx = nullptr;
+	usb_ctx = nullptr;
 };
 
 void CameraAndroid::update_feeds() {
-  // replace this by inotify
-  Ref<CameraFeedAndroid> newfeed;
-  newfeed.instance();
-  newfeed->set_name("Android Dummy Device");
-  //newfeed->activate_feed();
-  add_feed(newfeed);
+	LOGI("CameraAndroid::update_feeds()\n");
 }
 
-void CameraAndroid::add_active_cameras(){
-  ///@TODO scan through any active cameras and create CameraFeedAndroid objects for them
+void CameraAndroid::add_active_cameras() {
+	///@TODO scan through any active cameras and create CameraFeedAndroid objects for them
 }
