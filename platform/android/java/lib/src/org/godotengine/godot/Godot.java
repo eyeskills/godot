@@ -1263,6 +1263,7 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 						String name = device.getDeviceName();
 						if (mUsbManager.hasPermission(device)) {
 							Log.i(TAG, "Already have permission for usb device " + name);
+							connect(device);
 						} else {
 							Log.i(TAG, "Requesting permission for usb device: " + name);
 							PendingIntent permissionIntent =
@@ -1293,25 +1294,27 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 					UsbDevice device =
 						(UsbDevice)intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
 					if (device != null) {
-						String name = device.getDeviceName();
 						if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-							Log.i(TAG, "Connecting to usb device " + name + "(id=" + Integer.toString(device.getDeviceId()) + ")");
-							UsbDeviceConnection connection = mUsbManager.openDevice(device);
-							if (connection != null) {
-								mUsbDevices.put(device.getDeviceId(), connection);
-								final int fd = connection.getFileDescriptor();
-								final byte[] rawDesc = connection.getRawDescriptors();
-								Log.i(TAG, String.format(Locale.US, "name=%s,desc=%d,rawDesc=", name, fd) + rawDesc);
-								GodotLib.cameraconnectionchanged(fd, true, name);
-							} else {
-								Log.e(TAG, "could not connect to device " + name);
-							}
+							connect(device);
 						} else {
-							Log.i(TAG, "permission denied for device " + name);
-							alert(TAG, "permission denied for device " + name);
+							Log.i(TAG, "permission denied for device " + device.getDeviceName());
 						}
 					}
 				}
+			}
+		}
+
+		private void connect(UsbDevice device) {
+			String name = device.getDeviceName();
+			Log.i(TAG, "Connecting to usb device " + name + "(id=" + Integer.toString(device.getDeviceId()) + ", class=" + Integer.toString(device.getDeviceClass()) + ")");
+			UsbDeviceConnection connection = mUsbManager.openDevice(device);
+			if (connection != null) {
+				//connection.claimInterface(device.getInterface(0), true);
+				mUsbDevices.put(device.getDeviceId(), connection);
+				final int fd = connection.getFileDescriptor();
+				GodotLib.cameraconnectionchanged(fd, true, name);
+			} else {
+				Log.e(TAG, "Could not connect to device " + name);
 			}
 		}
 	};
