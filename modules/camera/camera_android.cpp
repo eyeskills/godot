@@ -62,10 +62,9 @@ namespace {
 static libusb_context* usb_ctx{nullptr};
 static uvc_context* uvc_ctx{nullptr};
 
-// Map file descriptors to associated feeds.
-static Map<int, Ref<CameraFeedAndroid>> uvc_devices{};
-
 // simple MJPG version: https://gist.github.com/mike168m/6dd4eb42b2ec906e064d
+
+Map<int, Ref<CameraFeedAndroid>> CameraFeedAndroid::feeds{};
 
 CameraFeedAndroid::CameraFeedAndroid()
 		: fd{-1}, uvc_devh{nullptr}, stream_ctrl{nullptr} { }
@@ -74,7 +73,7 @@ Ref<CameraFeedAndroid> CameraFeedAndroid::create(int fd, String name)
 {
 	print_line(vformat("CameraFeedAndroid::create_feed(fd=%d)", fd));
 
-	if (uvc_devices.has(fd))
+	if (feeds.has(fd))
 		destroy(fd); // should have been destroyed already, do it now
 
 	libusb_device_handle* usb_devh;
@@ -117,18 +116,18 @@ Ref<CameraFeedAndroid> CameraFeedAndroid::create(int fd, String name)
 	feed->uvc_devh = uvc_devh;
 	feed->stream_ctrl = stream_ctrl;
 
-	uvc_devices.insert(fd, feed);
+	feeds.insert(fd, feed);
 	return feed;
 }
 
 // Can’t do this in ~CameraFeedAndroid because it might get called
 // much later, when the last Ref goes out of scope.
 Ref<CameraFeedAndroid> CameraFeedAndroid::destroy(int fd) {
-	auto p_feed = uvc_devices.find(fd);
+	auto p_feed = feeds.find(fd);
 	if (!p_feed)
 		return {};
 	Ref<CameraFeedAndroid> feed{p_feed->value()};
-	uvc_devices.erase(fd);
+	feeds.erase(fd);
 
 	// Make sure we stop recording if we are.
 	if (feed->is_active())

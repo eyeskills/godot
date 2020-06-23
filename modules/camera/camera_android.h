@@ -61,6 +61,9 @@ private:
 	int fd;
 	uvc_device_handle* uvc_devh;
 	uvc_stream_ctrl* stream_ctrl;
+
+	// Map file descriptors to associated feeds.
+	static Map<int, Ref<CameraFeedAndroid>> feeds;
 };
 
 class CameraAndroid : public CameraServer {
