@@ -37,7 +37,6 @@
 #include <string.h>
 #include <fcntl.h>              /* low-level i/o */
 #include <errno.h>
-#include <log.h>
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -55,7 +54,7 @@ const char* libuvc_error_name(int e){return uvc_strerror((uvc_error_t)e);}
 
 namespace {
 	extern "C" void uvc_callback(struct uvc_frame* frame, void* userptr) {
-		LOGI("uvc_callback(frame=%p, userptr=%p)\n", frame, userptr);
+		print_line(vformat("uvc_callback(frame=%d, userptr=%d)\n", frame, userptr));
 		reinterpret_cast<CameraFeedAndroid*>(userptr)->frame_callback(frame);
 	}
 }
@@ -73,18 +72,15 @@ CameraFeedAndroid::CameraFeedAndroid()
 
 Ref<CameraFeedAndroid> CameraFeedAndroid::create(int fd, String name)
 {
-	print_line("CameraFeedAndroid::create_feed(fd=" + itos(fd) +")");
+	print_line(vformat("CameraFeedAndroid::create_feed(fd=%d)", fd));
 
 	if (uvc_devices.has(fd))
 		destroy(fd); // should have been destroyed already, do it now
 
-	Ref<CameraFeedAndroid> feed;
-
 	libusb_device_handle* usb_devh;
 	int status = libusb_wrap_sys_device(usb_ctx, (intptr_t)fd, &usb_devh);
-	LOGI("libusb_wrap_sys_device(): %s (%i)\n", libusb_error_name(status), status);
-	if (status != 0)
-		return feed;
+	ERR_FAIL_COND_V_MSG(status != 0, {},
+		vformat("libusb_wrap_sys_device(): %s (%d)", libusb_error_name(status), status));
 
 	// libuvc init
 	uvc_device* uvc_dev;
@@ -92,13 +88,11 @@ Ref<CameraFeedAndroid> CameraFeedAndroid::create(int fd, String name)
 	uvc_dev->ctx = uvc_ctx;
 	uvc_dev->ref = 0;
 	uvc_dev->usb_dev = libusb_get_device(usb_devh);
-	LOGI("uvc device: %p\n", (void*)uvc_dev->usb_dev);
 
 	uvc_device_handle* uvc_devh;
 	status = uvc_open_with_usb_devh(uvc_dev, &uvc_devh, usb_devh);
-	LOGI("uvc_open: %s (%i) ", libuvc_error_name(status), status);
-	if (status != 0)
-		return feed;
+	ERR_FAIL_COND_V_MSG(status != 0, {},
+		vformat("uvc_open_with_usb_devh: %s (%d)", libuvc_error_name(status), status));
 
 	uvc_print_diag(uvc_devh, NULL);
 
@@ -109,14 +103,14 @@ Ref<CameraFeedAndroid> CameraFeedAndroid::create(int fd, String name)
 		uvc_devh, stream_ctrl, /* result stored in ctrl */
 		UVC_FRAME_FORMAT_ANY, /* YUV 422, aka YUV 4:2:2. try _COMPRESSED */
 		160, 120, 15); /* width, height, fps */
-	LOGI("uvc_get_stream_ctrl_format_size: %s (%i) ", libuvc_error_name(status), status);
 	if (status != 0) {
 		uvc_close(uvc_devh);
-		return feed;
+		ERR_FAIL_V_MSG({},
+			vformat("uvc_get_stream_ctrl_format_size: %s (%d)", libuvc_error_name(status), status));
 	}
 	uvc_print_stream_ctrl(stream_ctrl, NULL);
 
-	print_line(feed.is_valid() ? "XYZZY valid" : "XYZZY invalid");
+	Ref<CameraFeedAndroid> feed;
 	feed.instance();
 	feed->set_name(name);
 	feed->fd = fd;
@@ -136,7 +130,6 @@ Ref<CameraFeedAndroid> CameraFeedAndroid::destroy(int fd) {
 	Ref<CameraFeedAndroid> feed{p_feed->value()};
 	uvc_devices.erase(fd);
 
-	print_line("Destroying CameraFeedAndroid at " + itos((long long)&feed));
 	// Make sure we stop recording if we are.
 	if (feed->is_active())
 		feed->deactivate_feed();
@@ -149,10 +142,10 @@ Ref<CameraFeedAndroid> CameraFeedAndroid::destroy(int fd) {
 bool CameraFeedAndroid::activate_feed() {
 	if (fd < 0)
 		return false;
-	LOGI("CameraFeedAndroid::activate_feed(this=%p)\n", this);
 	int status = uvc_start_streaming(uvc_devh, stream_ctrl, uvc_callback, this, 0);
-	LOGI("uvc_start_streaming: %s (%i)", libuvc_error_name(status), status);
-	return status == 0;
+	ERR_FAIL_COND_V_MSG(status != 0, false,
+		vformat("uvc_start_streaming: %s (%d)", libuvc_error_name(status), status));
+	return true;
 }
 
 ///@TODO we should probably have a callback method here that is being called by the
@@ -169,7 +162,7 @@ void CameraFeedAndroid::deactivate_feed(){
  * quick processing you need, or have it put the frame into your application's
  * input queue. If this function takes too long, you'll start losing frames. */
 void CameraFeedAndroid::frame_callback(uvc_frame_t *frame) {
-  LOGI("uvc_camera_feed_callback triggered");
+   print_line("uvc_camera_feed_callback triggered");
   uvc_frame_t *bgr;
   uvc_error_t ret;
   Ref<Image> p_rgb_img;
@@ -178,10 +171,7 @@ void CameraFeedAndroid::frame_callback(uvc_frame_t *frame) {
   PoolVector<uint8_t>::Write w = img_data.write();
   /* We'll convert the image from YUV/JPEG to BGR, so allocate space */
   bgr = uvc_allocate_frame(frame->width * frame->height * 3);
-  if (!bgr) {
-    LOGI("unable to allocate bgr frame!");
-    return;
-  }
+  ERR_FAIL_COND_MSG(!bgr, "unable to allocate bgr frame!");
 
   /* Do the BGR conversion */
   ret = uvc_any2bgr(frame, bgr);
@@ -203,11 +193,11 @@ CameraAndroid::CameraAndroid() {
 	// Initialize libusb and libuvc if we haven’t yet.
 	if (!usb_ctx) {
 		int status = libusb_init(&usb_ctx);
-		if (status != 0)
-			LOGI("libusb_init: %s (%i)\n", libusb_error_name(status), status);
+		ERR_FAIL_COND_MSG(status != 0,
+			vformat("libusb_init: %s (%d)", libusb_error_name(status), status));
 		status = uvc_init(&uvc_ctx, usb_ctx);
-		if (status != 0)
-			LOGI("uvc_init: %s (%i) ", libuvc_error_name(status), status);
+		ERR_FAIL_COND_MSG(status != 0,
+			vformat("uvc_init: %s (%d)", libuvc_error_name(status), status));
 	}
 	//libusb_set_option(NULL, LIBUSB_OPTION_LOG_LEVEL, verbose);
 
@@ -224,7 +214,6 @@ CameraAndroid::~CameraAndroid() {
 };
 
 void CameraAndroid::update_feeds() {
-	LOGI("CameraAndroid::update_feeds()\n");
 }
 
 void CameraAndroid::add_active_cameras() {

@@ -378,16 +378,15 @@ JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_joyconnectionchanged(
 
 JNIEXPORT void JNICALL Java_org_godotengine_godot_GodotLib_cameraconnectionchanged(JNIEnv *env, jclass clazz, jint p_device, jboolean p_connected, jstring p_name) {
 	if (os_android) {
-		String name = jstring_to_string(p_name, env);
-		CameraServer* server = CameraServer::get_singleton();
 		if (p_connected) {
+			String name = jstring_to_string(p_name, env);
 			Ref<CameraFeed> feed = CameraFeedAndroid::create(p_device, name);
 			if (feed.is_valid())
-				server->add_feed(feed);
+				CameraServer::get_singleton()->add_feed(feed);
 		} else {
 			Ref<CameraFeed> feed = CameraFeedAndroid::destroy(p_device);
 			if (feed.is_valid())
-				server->remove_feed(feed);
+				CameraServer::get_singleton()->remove_feed(feed);
 		}
 	}
 }
