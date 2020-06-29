@@ -79,6 +79,9 @@ protected:
 public:
 	static CameraServer *get_singleton();
 
+	virtual Error init();
+	virtual void finish();
+
 	template <class T>
 	static void make_default() {
 		create_func = _create_builtin<T>;

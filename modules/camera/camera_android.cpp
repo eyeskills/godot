@@ -188,14 +188,14 @@ void CameraFeedAndroid::frame_callback(uvc_frame_t *frame) {
   uvc_free_frame(bgr);
 }
 
-CameraAndroid::CameraAndroid() {
+Error CameraAndroid::init() {
 	// Initialize libusb and libuvc if we haven’t yet.
 	if (!usb_ctx) {
 		int status = libusb_init(&usb_ctx);
-		ERR_FAIL_COND_MSG(status != 0,
+		ERR_FAIL_COND_V_MSG(status != 0, FAILED,
 			vformat("libusb_init: %s (%d)", libusb_error_name(status), status));
 		status = uvc_init(&uvc_ctx, usb_ctx);
-		ERR_FAIL_COND_MSG(status != 0,
+		ERR_FAIL_COND_V_MSG(status != 0, FAILED,
 			vformat("uvc_init: %s (%d)", libuvc_error_name(status), status));
 	}
 	//libusb_set_option(NULL, LIBUSB_OPTION_LOG_LEVEL, verbose);
@@ -203,14 +203,19 @@ CameraAndroid::CameraAndroid() {
 	// Find cameras active right now
 	//add_active_cameras();
 	//update_feeds();
-};
+	return OK;
+}
 
-CameraAndroid::~CameraAndroid() {
-	uvc_exit(uvc_ctx);
-	libusb_exit(usb_ctx);
-	uvc_ctx = nullptr;
-	usb_ctx = nullptr;
-};
+void CameraAndroid::finish() {
+	if (uvc_ctx) {
+		uvc_exit(uvc_ctx);
+		uvc_ctx = nullptr;
+	}
+	if (usb_ctx) {
+		libusb_exit(usb_ctx);
+		usb_ctx = nullptr;
+	}
+}
 
 void CameraAndroid::update_feeds() {
 }

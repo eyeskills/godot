@@ -1411,6 +1411,7 @@ Error Main::setup2(Thread::ID p_main_tid_override) {
 	register_module_types();
 
 	camera_server = CameraServer::create();
+	camera_server->init();
 
 	initialize_physics();
 	register_server_singletons();
@@ -2282,6 +2283,7 @@ void Main::cleanup() {
 	}
 
 	if (camera_server) {
+		camera_server->finish();
 		memdelete(camera_server);
 	}
 

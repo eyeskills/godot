@@ -60,6 +60,13 @@ CameraServer *CameraServer::get_singleton() {
 	return singleton;
 };
 
+Error CameraServer::init() {
+	return OK;
+};
+
+void CameraServer::finish() {
+};
+
 int CameraServer::get_free_id() {
 	bool id_exists = true;
 	int newid = 0;

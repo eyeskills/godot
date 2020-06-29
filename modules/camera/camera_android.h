@@ -68,8 +68,8 @@ private:
 
 class CameraAndroid : public CameraServer {
 public:
-	CameraAndroid();
-	~CameraAndroid();
+	virtual Error init();
+	virtual void finish();
 
 private:
 	void add_active_cameras();
