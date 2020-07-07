@@ -581,11 +581,11 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 		mSensorManager.registerListener(this, mGyroscope, SensorManager.SENSOR_DELAY_GAME);
 
 		mUsbDevices = new HashMap<Integer, UsbDeviceConnection>();
-		mUsbManager = (UsbManager)getSystemService(Context.USB_SERVICE);
+		mUsbManager = (UsbManager)activity.getSystemService(Context.USB_SERVICE);
 		IntentFilter filter = new IntentFilter("com.android.example.USB_PERMISSION");
 		filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
 		filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
-		registerReceiver(usbReceiver, filter);
+		activity.registerReceiver(usbReceiver, filter);
 
 		GodotLib.initialize(activity, this, activity.getAssets(), use_apk_expansion);
 
@@ -1217,11 +1217,12 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 		int uid = android.os.Process.myUid();
 		Log.i(TAG, "uid: " + uid + " pid:" + pid);
 
-		if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED){
+		final Activity activity = getActivity();
+		if (activity.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED){
 			try {
 				// Internal Cam
 				// https://github.com/googlearchive/android-Camera2Basic/blob/master/Application/src/main/java/com/example/android/camera2basic/Camera2BasicFragment.java
-				CameraManager manager = (CameraManager) getApplicationContext().getSystemService(Context.CAMERA_SERVICE);
+				CameraManager manager = (CameraManager)activity.getSystemService(Context.CAMERA_SERVICE);
 				String mCameraId = manager.getCameraIdList()[0];
 				HandlerThread mBackgroundThread = new HandlerThread("CameraBackground");
 				mBackgroundThread.start();
@@ -1267,7 +1268,7 @@ public class Godot extends Fragment implements SensorEventListener, IDownloaderC
 						} else {
 							Log.i(TAG, "Requesting permission for usb device: " + name);
 							PendingIntent permissionIntent =
-								PendingIntent.getBroadcast(Godot.this, 0, new Intent("com.android.example.USB_PERMISSION"), 0);
+								PendingIntent.getBroadcast(getActivity(), 0, new Intent("com.android.example.USB_PERMISSION"), 0);
 							mUsbManager.requestPermission(device, permissionIntent);
 						}
 					}
